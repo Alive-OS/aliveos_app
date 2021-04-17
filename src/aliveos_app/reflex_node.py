@@ -33,9 +33,9 @@ class ReflexNode(GenericMindNode):
         super().start()
         rospy.spin()
 
-    def _perception_callback(self, perception_concept: msg.PerceptionConcept):
-        super()._perception_callback(perception_concept)
-        self.perceprion_callback(perception_concept.symbol, perception_concept.modifier)
+    def _callback_perception_concept(self, perception_concept: msg.PerceptionConcept):
+        super()._callback_perception_concept(perception_concept)
+        self.callback_perception_concept(perception_concept.symbol, perception_concept.modifier)
 
-    def perceprion_callback(self, symbol, modifier):
+    def callback_perception_concept(self, symbol, modifier):
         raise NotImplementedError
