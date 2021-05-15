@@ -21,19 +21,15 @@
 # *************************************************************************
 
 import json
-from time import sleep
 
-from rosparam import get_param
 from rospkg import RosPack, ResourceNotFound
-from rospy import logdebug, logerr, loginfo, init_node
+from rospy import logdebug, logerr, init_node
 from rospy.service import ServiceException
 
 from aliveos_msgs import srv, msg
-from aliveos_py import ros as aliveosr
 from aliveos_py.ros import get_client, get_subscriber
 from aliveos_py.helpers.json_tools import json_to_dict, dict_to_json_str, ValidationError
 from . import node_types
-from .exceptions import ReceivedAbort, ReceivedBusy
 
 
 class GenericMindNode:
