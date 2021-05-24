@@ -22,13 +22,12 @@
 
 import json
 
-from rosparam import get_param
 from rospkg import RosPack, ResourceNotFound
-from rospy import logdebug, logerr, loginfo, init_node
+from rospy import logdebug, logerr, init_node
 from rospy.service import ServiceException
 
 from aliveos_msgs import srv, msg
-from aliveos_py import ros as ar
+from aliveos_py.ros import get_client, get_subscriber
 from aliveos_py.helpers.json_tools import json_to_dict, dict_to_json_str, ValidationError
 from . import node_types
 
@@ -44,48 +43,41 @@ class GenericMindNode:
         # Command concepts
         self.concept_files = concept_files
         # Clients
-        self.client_command_concept = None
-        self.client_command_concept_dsc = None
-        self.client_emotion_core_write = None
+        self.clt_command_concept = None
+        self.clt_command_concept_dsc = None
+        self.clt_emotion_core_write = None
         # Subscribers
-        self.subscriber_perception_concept = None
-        self.subscriber_emotion_params = None
+        self.sub_perception_concept = None
+        self.sub_emotion_params = None
 
         try:
             self.schema_path = RosPack().get_path('aliveos_msgs') + "/json"
         except ResourceNotFound:
             raise ResourceNotFound("Cannot find the aliveos_msgs package")
 
-    def _perception_callback(self, perception_concept: msg.PerceptionConcept):
+    def _callback_perception_concept(self, perception_concept: msg.PerceptionConcept):
+        logdebug(f"d2c -> mind: {perception_concept.symbol} - {perception_concept.modifier}")
         self.current_perception_concept = perception_concept.symbol
         self.current_perception_concept_mod = perception_concept.modifier
 
-    def _emotion_callback(self, params: msg.EmotionParams):
+    def _callback_emotion_params(self, params: msg.EmotionParams):
+        logdebug(f"ecore -> mind: {params.params_json}")
         params_dict = json.loads(params.params_json)
         self.current_emotion_params = params_dict
 
     def _init_communications(self):
-        logdebug("Client \'%s\' is starting..." % self.name)
-        self.subscriber_perception_concept = ar.get.subscriber(topic_name=get_param("TOPIC_PC"),
-                                                               data_class=msg.PerceptionConcept,
-                                                               callback=self._perception_callback)
-        self.subscriber_emotion_params = ar.get.subscriber(topic_name=get_param("TOPIC_EPARAM"),
-                                                           data_class=msg.EmotionParams,
-                                                           callback=self._emotion_callback)
-        self.client_command_concept = ar.get.client(srv_name=get_param("SRV_C2C_CMDC"),
-                                                    service=srv.CommandConcept)
-        self.client_command_concept_dsc = ar.get.client(srv_name=get_param("SRV_C2C_CMDDSC"),
-                                                        service=srv.CommandConceptDescriptor)
-        self.client_of_emotion_core_write = ar.get.client(srv_name=get_param("SRV_ECORE_W"),
-                                                          service=srv.EmotionCoreWrite)
-        loginfo("Client \'%s\' is ready" % self.name)
+        self.sub_perception_concept = get_subscriber.perception_concept(self._callback_perception_concept)
+        self.sub_emotion_params = get_subscriber.emotion_params(self._callback_emotion_params)
+        self.clt_command_concept = get_client.command_concept()
+        self.clt_command_concept_dsc = get_client.command_concept_descriptor()
+        self.clt_emotion_core_write = get_client.emotion_core_write()
 
     def _send_command_concept_single(self, cc):
         json_dict = json_to_dict(in_json=cc, in_schema=f"{self.schema_path}/command-concept-dsc.json")
         json_str = dict_to_json_str(in_dict=json_dict)
         m = srv.CommandConceptDescriptorRequest()
         m.descriptor_json = json_str
-        self.client_command_concept_dsc(m)
+        self.clt_command_concept_dsc(m)
 
     def _send_command_concepts(self):
         for cc in self.concept_files:
@@ -93,6 +85,9 @@ class GenericMindNode:
                 self._send_command_concept_single(cc)
             except ValidationError as e:
                 logerr(f"Incorrect input json: {cc}\nError:[{e.message}]")
+
+    def send_cmd(self, symbol: str, modifier=()):
+        return self.clt_command_concept(self.node_type, symbol, str(modifier))
 
     def start(self):
         init_node(self.name, anonymous=False)
@@ -106,7 +101,7 @@ class GenericMindNode:
         m.temp_val_per_sec = change_per_sec
         m.temp_param_name = param
         try:
-            r = self.client_of_emotion_core_write(m)
+            r = self.clt_emotion_core_write(m)
         except ServiceException:
             logerr("Service PerceptionConceptDescriptor error!")
             r = None

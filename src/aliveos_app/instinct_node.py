@@ -21,8 +21,13 @@
 # *************************************************************************
 
 from .generic_mind_node import GenericMindNode, node_types
+from .exceptions import ReceivedAbort, ReceivedBusy
+from time import sleep, time
+
 from aliveos_msgs import msg
 import rospy
+from rospy import ServiceException
+from rospy import logdebug, logerr, loginfo, logwarn, ServiceException, set_param
 
 
 class InstinctNode(GenericMindNode):
@@ -33,9 +38,32 @@ class InstinctNode(GenericMindNode):
         super().start()
         rospy.spin()
 
-    def _perception_callback(self, perception_concept: msg.PerceptionConcept):
-        super()._perception_callback(perception_concept)
-        self.perceprion_callback(perception_concept.symbol, perception_concept.modifier)
+    def _callback_perception_concept(self, perception_concept: msg.PerceptionConcept):
+        super()._callback_perception_concept(perception_concept)
+        self.callback_perception_concept(perception_concept.symbol, perception_concept.modifier)
 
-    def perceprion_callback(self, symbol, modifier):
+    def _send_cmd_helper(self, symbol, modifier=()):
+        logdebug(f"c2c -> instinct: {symbol} - {modifier}")
+        try:
+            response = self.clt_command_concept(self.node_type, symbol, str(modifier))
+            res = response.result
+            logdebug("Response for %s: %s" % (symbol, res))
+            if res[:4] == "busy":
+                raise ReceivedBusy
+            elif res[:5] == "error":
+                logerr(f"Concept ({symbol}) was executed with {res}")
+            return res
+        except ServiceException as e:
+            logerr("Service call failed: %s" % e)
+            return str(e)
+
+    def send_cmd(self, symbol: str, modifier=()):
+        while 1:
+            try:
+                return self._send_cmd_helper(symbol, modifier)
+            except ReceivedBusy:
+                loginfo("send_cmd got Busy")
+                sleep(1)  # wait and retry
+
+    def callback_perception_concept(self, symbol, modifier):
         raise NotImplementedError
